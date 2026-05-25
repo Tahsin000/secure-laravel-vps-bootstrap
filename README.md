@@ -99,6 +99,105 @@ sudo bash scripts/install.sh \
   --install-redis
 ```
 
+## Step-by-step execution flow after clone or pull on VPS
+
+This section is the exact command flow to run after you clone or pull this repository on your VPS.
+
+### Root cause of setup confusion
+
+- The README had quick-start commands and Laravel deployment commands, but not one dedicated execution runbook.
+- The old deploy snippet used `git clone ... .` inside `${APP_DIR}` even though `install.sh` already creates files/directories there, so clone can fail with `destination path '.' already exists and is not an empty directory`.
+- The flow did not clearly separate one-time server bootstrap from repeat Laravel deployments.
+
+### 1. One-time VPS bootstrap (run once per server)
+
+```bash
+cd ~/secure-laravel-vps-bootstrap
+git pull --ff-only
+
+sudo bash scripts/install.sh \
+  --domain example.com \
+  --app-dir /var/www/example.com \
+  --php-version auto \
+  --ssh-port 22
+```
+
+With HTTPS:
+
+```bash
+sudo bash scripts/install.sh \
+  --domain example.com \
+  --app-dir /var/www/example.com \
+  --php-version auto \
+  --ssh-port 22 \
+  --enable-ssl \
+  --email admin@example.com
+```
+
+### 2. One-time Laravel app deploy into the prepared app directory
+
+```bash
+export APP_DIR=/var/www/example.com
+export APP_REPO=https://github.com/your-org/your-laravel-app.git
+export PHP_FPM_SERVICE=php8.3-fpm
+
+sudo rm -f "${APP_DIR}/public/index.html"
+sudo rm -rf /tmp/laravel-app-src
+sudo git clone "${APP_REPO}" /tmp/laravel-app-src
+sudo cp -a /tmp/laravel-app-src/. "${APP_DIR}/"
+sudo rm -rf /tmp/laravel-app-src
+
+sudo chown -R "$USER":www-data "${APP_DIR}"
+cd "${APP_DIR}"
+
+composer install --no-dev --optimize-autoloader
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --force
+php artisan storage:link
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R ug+rwX,o-rwx storage bootstrap/cache
+sudo systemctl reload nginx
+sudo systemctl restart "${PHP_FPM_SERVICE}"
+```
+
+### 3. Regular deployment flow (every new app release)
+
+```bash
+export APP_DIR=/var/www/example.com
+export PHP_FPM_SERVICE=php8.3-fpm
+
+cd "${APP_DIR}"
+git pull --ff-only
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan optimize
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R ug+rwX,o-rwx storage bootstrap/cache
+sudo systemctl reload nginx
+sudo systemctl restart "${PHP_FPM_SERVICE}"
+```
+
+### 4. When you pull updates to this bootstrap repository later
+
+Re-run `install.sh` with the same options. It is designed to be safely re-applied for package/config alignment.
+
+```bash
+cd ~/secure-laravel-vps-bootstrap
+git pull --ff-only
+sudo bash scripts/install.sh --domain example.com --app-dir /var/www/example.com --ssh-port 22
+```
+
+Then verify:
+
+```bash
+sudo bash scripts/verify.sh 8.3
+```
+
 ## Installer options
 
 | Option | Required | Default | Purpose |
@@ -222,31 +321,7 @@ That avoids exposing PHP-FPM directly to the network.
 
 ## Deploying your Laravel project after bootstrap
 
-Example deployment flow:
-
-```bash
-cd /var/www/example.com
-sudo rm -f public/index.html
-sudo git clone https://github.com/Tahsin000/YOUR_LARAVEL_APP.git .
-sudo composer install --no-dev --optimize-autoloader
-sudo cp .env.example .env
-sudo php artisan key:generate
-sudo php artisan migrate --force
-sudo php artisan storage:link
-sudo php artisan config:cache
-sudo php artisan route:cache
-sudo php artisan view:cache
-sudo chown -R www-data:www-data storage bootstrap/cache
-sudo chmod -R ug+rwX,o-rwx storage bootstrap/cache
-sudo systemctl reload nginx
-sudo systemctl restart php8.x-fpm
-```
-
-Replace `php8.x-fpm` with the installed PHP-FPM service, for example:
-
-```bash
-sudo systemctl restart php8.3-fpm
-```
+Use the dedicated runbook in `Step-by-step execution flow after clone or pull on VPS`.
 
 ## Enabling Laravel queue workers
 
