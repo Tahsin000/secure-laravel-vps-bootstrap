@@ -1,0 +1,12 @@
+[sshd]
+enabled = true
+port = __SSH_PORT__
+maxretry = 5
+findtime = 10m
+bantime = 1h
+
+[nginx-http-auth]
+enabled = true
+
+[nginx-botsearch]
+enabled = true

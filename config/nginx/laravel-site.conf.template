@@ -1,0 +1,44 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+
+    root __APP_DIR__/public;
+    index index.php index.html;
+
+    charset utf-8;
+    client_max_body_size 64M;
+
+    access_log /var/log/nginx/__SITE_ID__-access.log;
+    error_log  /var/log/nginx/__SITE_ID__-error.log warn;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php__PHP_VERSION__-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $realpath_root;
+        fastcgi_hide_header X-Powered-By;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+
+    location ~* /(\.env|\.git|composer\.(json|lock)|package(-lock)?\.json|vite\.config\.|webpack\.mix\.|phpunit\.xml|server\.php) {
+        deny all;
+    }
+}
