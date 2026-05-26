@@ -31,6 +31,7 @@ secure-laravel-vps-bootstrap/
 ├── .gitignore
 ├── scripts/
 │   ├── install.sh
+│   ├── fix-permissions.sh
 │   └── verify.sh
 └── config/
     ├── fail2ban/
@@ -159,8 +160,8 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-sudo chown -R www-data:www-data storage bootstrap/cache
-sudo chmod -R ug+rwX,o-rwx storage bootstrap/cache
+cd ~/secure-laravel-vps-bootstrap
+sudo bash scripts/fix-permissions.sh --app-dir "${APP_DIR}"
 sudo systemctl reload nginx
 sudo systemctl restart "${PHP_FPM_SERVICE}"
 ```
@@ -176,8 +177,8 @@ git pull --ff-only
 composer install --no-dev --optimize-autoloader
 php artisan migrate --force
 php artisan optimize
-sudo chown -R www-data:www-data storage bootstrap/cache
-sudo chmod -R ug+rwX,o-rwx storage bootstrap/cache
+cd ~/secure-laravel-vps-bootstrap
+sudo bash scripts/fix-permissions.sh --app-dir "${APP_DIR}"
 sudo systemctl reload nginx
 sudo systemctl restart "${PHP_FPM_SERVICE}"
 ```
@@ -260,6 +261,7 @@ This section explains the important commands used by the installer and why each 
 | `install -d -m 0755 -o root -g root /var/www/<project>/public` | Creates the web root with safe default ownership and permissions. |
 | `install -d -m 0775 -o www-data -g www-data /var/www/<project>/storage` | Creates Laravel's writable storage directory for logs, cache, sessions, and uploads. |
 | `install -d -m 0775 -o www-data -g www-data /var/www/<project>/bootstrap/cache` | Creates Laravel's writable bootstrap cache directory. |
+| `bash scripts/fix-permissions.sh --app-dir /var/www/<project>` | Re-applies correct writable ownership and mode for `storage` and `bootstrap/cache` after each deployment. |
 | `ln -sfn /etc/nginx/sites-available/<site>.conf /etc/nginx/sites-enabled/<site>.conf` | Enables the generated Nginx site. |
 | `rm -f /etc/nginx/sites-enabled/default` | Disables the default Nginx site to avoid exposing the placeholder page. |
 | `sysctl --system` | Applies conservative kernel network hardening settings. |
@@ -323,6 +325,12 @@ That avoids exposing PHP-FPM directly to the network.
 
 Use the dedicated runbook in `Step-by-step execution flow after clone or pull on VPS`.
 
+If you ever see Laravel write errors (cache/session/log), run:
+
+```bash
+sudo bash scripts/fix-permissions.sh --app-dir /var/www/example.com
+```
+
 ## Enabling Laravel queue workers
 
 The installer writes a disabled Supervisor example here:
@@ -357,6 +365,49 @@ It checks:
 - Composer version
 - UFW firewall status
 - Listening TCP ports
+
+## Troubleshooting: `symfony/* requires php >=8.4`
+
+If `composer install` fails with errors like:
+
+```text
+symfony/... requires php >=8.4 -> your php version (8.3.x) does not satisfy that requirement
+```
+
+your Laravel app lockfile is targeting Symfony 8 packages, but the VPS is running PHP 8.3.
+
+Check current PHP:
+
+```bash
+php -v
+```
+
+Check whether PHP 8.4 is available from your current Ubuntu APT repositories:
+
+```bash
+apt-cache policy php8.4-fpm
+```
+
+If PHP 8.4 is available, re-run bootstrap with PHP 8.4:
+
+```bash
+cd ~/secure-laravel-vps-bootstrap
+git pull --ff-only
+sudo bash scripts/install.sh \
+  --domain example.com \
+  --app-dir /var/www/example.com \
+  --php-version 8.4 \
+  --ssh-port 22
+```
+
+Then deploy/install dependencies again:
+
+```bash
+cd /var/www/example.com
+composer install --no-dev --optimize-autoloader
+```
+
+If PHP 8.4 is not available in your current Ubuntu repositories, use a VPS image/repository source that provides `php8.4-*` packages, or adjust your Laravel app dependency lockfile to versions compatible with PHP 8.3 before deploying.
 
 ## Production notes
 

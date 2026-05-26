@@ -15,6 +15,7 @@ ENABLE_SSL="false"
 INSTALL_MYSQL="false"
 INSTALL_REDIS="false"
 SITE_ID=""
+AUTO_FELL_BACK_TO_83="false"
 
 log() {
   printf '\n\033[1;32m[+] %s\033[0m\n' "$*"
@@ -134,6 +135,9 @@ select_php_version() {
     if package_available "php${candidate}-fpm"; then
       PHP_VERSION="${candidate}"
       log "Selected PHP ${PHP_VERSION} from Ubuntu repositories"
+      if [[ "${candidate}" == "8.3" ]]; then
+        AUTO_FELL_BACK_TO_83="true"
+      fi
       return
     fi
   done
@@ -453,15 +457,26 @@ Next deployment steps:
   1. Upload or git clone your Laravel project into ${APP_DIR}.
   2. Run: cd ${APP_DIR} && composer install --no-dev --optimize-autoloader
   3. Create .env safely and run: php artisan key:generate
-  4. Set writable permissions only on storage and bootstrap/cache:
-     sudo chown -R www-data:www-data ${APP_DIR}/storage ${APP_DIR}/bootstrap/cache
-     sudo chmod -R ug+rwX,o-rwx ${APP_DIR}/storage ${APP_DIR}/bootstrap/cache
+  4. Re-apply Laravel writable permissions:
+     sudo bash scripts/fix-permissions.sh --app-dir ${APP_DIR}
   5. Reload services:
      sudo systemctl reload nginx
      sudo systemctl restart php${PHP_VERSION}-fpm
 
 Use scripts/verify.sh to review service status and exposed ports.
 SUMMARY
+
+  if [[ "${AUTO_FELL_BACK_TO_83}" == "true" ]]; then
+    cat <<NOTE
+
+Compatibility note:
+  - Auto mode selected PHP 8.3 because PHP 8.4 was not available from current APT repositories.
+  - Some Laravel 13 lockfiles resolve Symfony 8 packages that require PHP >= 8.4.
+  - If 'composer install' fails with 'symfony/* requires php >=8.4', re-run this installer with:
+      --php-version 8.4
+    and use an Ubuntu/repository source that provides php8.4 packages.
+NOTE
+  fi
 }
 
 main() {
